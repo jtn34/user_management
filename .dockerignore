@@ -11,3 +11,7 @@ downloads
 **/id_ed25519*
 **/*.pem
 **/*.key
+downloads
+**/id_ed25519*
+*.pem
+*.key
