@@ -10,14 +10,14 @@ ENV PYTHONUNBUFFERED=1 \
     QR_CODE_DIR=/myapp/qr_codes
 
 WORKDIR /myapp
+# Create QR code dir and make it available at build time
+RUN mkdir -p /myapp/qr_codes
 
 # Update system and specifically upgrade libc-bin to the required security patch version
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
-    && apt-get install -y libc-bin=2.36-9+deb12u7 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies in /.venv
 COPY requirements.txt .
@@ -29,10 +29,10 @@ RUN python -m venv /.venv \
 # Define a second stage for the runtime, using the same Debian Bookworm slim image
 FROM python:3.12-slim-bookworm as final
 
-# Upgrade libc-bin in the final stage to ensure security patch is applied
-RUN apt-get update && apt-get install -y libc-bin=2.36-9+deb12u7 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Keep libc up to date without forcing a specific version
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libc-bin libpq5 \
+ && rm -rf /var/lib/apt/lists/*
 
 # Copy the virtual environment from the base stage
 COPY --from=base /.venv /.venv
