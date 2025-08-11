@@ -2,17 +2,17 @@ name: build-and-push-docker
 
 on:
   push:
-    branches: [ main ]        # publish on main
+    branches: [ main ]        # publish image on pushes to main
   pull_request:
-    branches: [ main ]        # PRs build only
-  workflow_dispatch:
+    branches: [ main ]        # PRs build only (no push)
+  workflow_dispatch:          # manual "Run workflow" button
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write         # required for ghcr.io
+      packages: write         # required to push to ghcr.io
 
     steps:
       - name: Checkout
@@ -37,3 +37,4 @@ jobs:
           tags: |
             ghcr.io/jtn34/user_management:latest
             ghcr.io/jtn34/user_management:${{ github.sha }}
+
