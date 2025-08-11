@@ -22,18 +22,21 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U user -d myappdb"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-cmd="pg_isready -U user -d myappdb"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
 
-    # ✅ Force Alembic/app to use localhost inside the GitHub runner
     env:
+      # App (sync) URLs for Alembic/app code if needed
       DATABASE_URL: postgresql+psycopg2://user:password@localhost:5432/myappdb
       SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://user:password@localhost:5432/myappdb
       POSTGRES_HOST: localhost
       DB_HOST: localhost
       PYTHONUNBUFFERED: '1'
+
+      # >>> Tests: use async driver so create_async_engine works
+      TEST_DATABASE_URL: postgresql+asyncpg://user:password@localhost:5432/myappdb
 
     steps:
       - name: Checkout
@@ -42,12 +45,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10.12'
+          python-version: '3.10'
 
-      - name: System deps for psycopg
+      - name: System deps (psycopg headers + pg client)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq-dev
+          sudo apt-get install -y libpq-dev postgresql-client
 
       - name: Install Python deps
         run: |
@@ -63,11 +66,10 @@ jobs:
             echo "Waiting for Postgres... ($i/30)"; sleep 2
           done
 
-      - name: Run Alembic migrations
-        # (job-level env already sets DATABASE_URL to localhost)
+      - name: Run Alembic migrations (sync URL)
         run: alembic upgrade head
 
-      - name: Run tests
+      - name: Run tests (async URL via TEST_DATABASE_URL)
         run: pytest -q
 
   build:
@@ -82,7 +84,7 @@ jobs:
 
     permissions:
       contents: read
-      security-events: write   # for uploading Trivy SARIF
+      security-events: write
 
     steps:
       - name: Checkout
@@ -120,7 +122,7 @@ jobs:
           ignore-unfixed: true
           format: 'sarif'
           output: 'trivy-results.sarif'
-          exit-code: '0'   # don't fail CI for now
+          exit-code: '0'
 
       - name: Upload Trivy report
         uses: github/codeql-action/upload-sarif@v3

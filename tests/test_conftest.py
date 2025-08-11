@@ -1,12 +1,19 @@
 # test_users.py
-
-from builtins import len
+import os
+from sqlalchemy.ext.asyncio import create_async_engine
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.future import select
 
 from app.models.user_model import User, UserRole
 from app.utils.security import verify_password
+
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/test_db",
+)
+
+engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 
 @pytest.mark.asyncio
 async def test_user_creation(db_session, verified_user):
