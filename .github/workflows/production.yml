@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+
 jobs:
   test:
     name: Test (pytest + Postgres service)
@@ -26,8 +27,12 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    # ✅ Force Alembic/app to use localhost inside the GitHub runner
     env:
       DATABASE_URL: postgresql+psycopg2://user:password@localhost:5432/myappdb
+      SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://user:password@localhost:5432/myappdb
+      POSTGRES_HOST: localhost
+      DB_HOST: localhost
       PYTHONUNBUFFERED: '1'
 
     steps:
@@ -59,6 +64,7 @@ jobs:
           done
 
       - name: Run Alembic migrations
+        # (job-level env already sets DATABASE_URL to localhost)
         run: alembic upgrade head
 
       - name: Run tests
@@ -76,7 +82,7 @@ jobs:
 
     permissions:
       contents: read
-      security-events: write   # needed to upload Trivy SARIF
+      security-events: write   # for uploading Trivy SARIF
 
     steps:
       - name: Checkout
@@ -85,7 +91,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Login only on pushes to main and when secrets exist
       - name: Login to Docker Hub
         if: env.IS_MAIN_PUSH == 'true' && env.HAS_DH_SECRETS == 'true'
         uses: docker/login-action@v3
@@ -104,7 +109,6 @@ jobs:
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      # Advisory scan (doesn't fail CI). Re-enable gate later.
       - name: Scan image with Trivy (advisory)
         uses: aquasecurity/trivy-action@0.24.0
         env:
@@ -116,7 +120,7 @@ jobs:
           ignore-unfixed: true
           format: 'sarif'
           output: 'trivy-results.sarif'
-          exit-code: '0'
+          exit-code: '0'   # don't fail CI for now
 
       - name: Upload Trivy report
         uses: github/codeql-action/upload-sarif@v3
