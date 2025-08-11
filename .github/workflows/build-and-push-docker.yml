@@ -2,17 +2,17 @@ name: build-and-push-docker
 
 on:
   push:
-    branches: [ main ]        # pushes to main will publish the image
+    branches: [ main ]        # publish on main
   pull_request:
-    branches: [ main ]        # PRs build only (no push)
-  workflow_dispatch:          # manual “Run workflow” button
+    branches: [ main ]        # PRs build only
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write         # required for pushing to ghcr.io
+      packages: write         # required for ghcr.io
 
     steps:
       - name: Checkout
@@ -28,7 +28,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Optional: enable build cache to speed up subsequent builds
       - name: Build (PRs) / Build+Push (main)
         uses: docker/build-push-action@v6
         with:
@@ -38,5 +37,3 @@ jobs:
           tags: |
             ghcr.io/jtn34/user_management:latest
             ghcr.io/jtn34/user_management:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
