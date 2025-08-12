@@ -13,6 +13,24 @@ Fixtures:
 - `setup_database`: Sets up and tears down the database before and after each test.
 """
 
+# tests/conftest.py
+import os, sys
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.ext.asyncio import create_async_engine
+
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
+if not TEST_DATABASE_URL:
+    raise RuntimeError("TEST_DATABASE_URL not set (needs postgresql+asyncpg://...)")
+
+driver = make_url(TEST_DATABASE_URL).drivername
+print(">> TEST DB driver:", driver, file=sys.stderr)
+if driver != "postgresql+asyncpg":
+    raise RuntimeError(f"Expected async driver 'postgresql+asyncpg', got '{driver}'")
+
+# create the async engine for tests
+engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+
+
 # Standard library imports
 from builtins import Exception, range, str
 from datetime import timedelta
