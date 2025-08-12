@@ -1,8 +1,17 @@
 # tests/conftest.py
 import os, sys
-from datetime import timedelta
-from uuid import uuid4
-from unittest.mock import AsyncMock
+from sqlalchemy.engine.url import make_url
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
+if not TEST_DATABASE_URL:
+    raise RuntimeError("TEST_DATABASE_URL not set")
+
+url = make_url(TEST_DATABASE_URL)
+if url.drivername in {"postgresql", "postgresql+psycopg2", "postgres"}:
+    url = url.set(drivername="postgresql+asyncpg")
+TEST_DATABASE_URL = str(url)
+
+print(">> Using TEST_DATABASE_URL:", TEST_DATABASE_URL, file=sys.stderr)
+print(">> Driver:", make_url(TEST_DATABASE_URL).drivername, file=sys.stderr)
 
 import pytest
 from faker import Faker

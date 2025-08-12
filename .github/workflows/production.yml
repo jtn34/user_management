@@ -9,9 +9,7 @@ on:
 
 jobs:
   test:
-    name: Test (pytest + Postgres service)
     runs-on: ubuntu-latest
-
     services:
       postgres:
         image: postgres:16
@@ -19,6 +17,7 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: myappdb
+          POSTGRES_HOST_AUTH_METHOD: trust   # <-- CI-only, disables password checks
         ports: ["5432:5432"]
         options: >-
           --health-cmd="pg_isready -U postgres -d myappdb"
@@ -53,9 +52,9 @@ jobs:
             echo "Waiting for Postgres... ($i/30)"; sleep 2
           done
 
-      - name: Verify DB login (must succeed)
+      - name: Verify DB login
         run: |
-          PGPASSWORD=postgres psql -h localhost -U postgres -d myappdb -c "select current_user, current_database();"
+          psql -h localhost -U postgres -d myappdb -c "select current_user, current_database();"
 
       - name: Run Alembic migrations (sync URL)
         env:
