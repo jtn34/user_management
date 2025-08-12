@@ -24,21 +24,17 @@ jobs:
           --health-cmd="pg_isready -U postgres -d myappdb"
           --health-interval=10s --health-timeout=5s --health-retries=20
 
-    # IMPORTANT: Only async test URL at job level
     env:
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/myappdb
       PYTHONUNBUFFERED: '1'
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: System deps (psycopg headers + pg client)
+      - name: System deps (psql client)
         run: |
           sudo apt-get update
           sudo apt-get install -y libpq-dev postgresql-client
@@ -57,17 +53,15 @@ jobs:
             echo "Waiting for Postgres... ($i/30)"; sleep 2
           done
 
-      - name: Verify DB login
+      - name: Verify DB login (must succeed)
         run: |
-          PGPASSWORD=postgres psql -h localhost -U postgres -d myappdb -c "select current_user;"
+          PGPASSWORD=postgres psql -h localhost -U postgres -d myappdb -c "select current_user, current_database();"
 
-      # Alembic gets a SYNC URL ONLY for this step
       - name: Run Alembic migrations (sync URL)
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/myappdb
         run: alembic upgrade head
 
-      # Debug: confirm pytest will use async driver
       - name: Debug test DB driver
         run: |
           python - <<'PY'
@@ -78,9 +72,12 @@ jobs:
           print("driver =", make_url(u).drivername)
           PY
 
-      # Ensure only async URL is visible to tests
-      - name: Run tests (async URL only)
+      - name: Run tests (async URL only; clear PG*)
         env:
           DATABASE_URL: ""
           SQLALCHEMY_DATABASE_URI: ""
+          PGUSER: ""
+          PGPASSWORD: ""
+          PGHOST: ""
+          PGDATABASE: ""
         run: pytest -q
