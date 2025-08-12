@@ -27,16 +27,10 @@ jobs:
           --health-timeout=5s
           --health-retries=20
 
+    # IMPORTANT: Only async test URL at job level
     env:
-      # App (sync) URLs for Alembic/app code if needed
-      DATABASE_URL: postgresql+psycopg2://user:password@localhost:5432/myappdb
-      SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://user:password@localhost:5432/myappdb
-      POSTGRES_HOST: localhost
-      DB_HOST: localhost
-      PYTHONUNBUFFERED: '1'
-
-      # >>> Tests: use async driver so create_async_engine works
       TEST_DATABASE_URL: postgresql+asyncpg://user:password@localhost:5432/myappdb
+      PYTHONUNBUFFERED: '1'
 
     steps:
       - name: Checkout
@@ -66,10 +60,28 @@ jobs:
             echo "Waiting for Postgres... ($i/30)"; sleep 2
           done
 
+      # Alembic gets a SYNC URL ONLY for this step
       - name: Run Alembic migrations (sync URL)
+        env:
+          DATABASE_URL: postgresql+psycopg2://user:password@localhost:5432/myappdb
         run: alembic upgrade head
 
-      - name: Run tests (async URL via TEST_DATABASE_URL)
+      # Debug: confirm pytest will use async driver
+      - name: Debug test DB driver
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy.engine.url import make_url
+          u = os.environ["TEST_DATABASE_URL"]
+          print("TEST_DATABASE_URL =", u)
+          print("driver =", make_url(u).drivername)
+          PY
+
+      # Ensure only async URL is visible to tests
+      - name: Run tests (async URL only)
+        env:
+          DATABASE_URL: ""
+          SQLALCHEMY_DATABASE_URI: ""
         run: pytest -q
 
   build:
