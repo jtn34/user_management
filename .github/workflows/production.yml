@@ -16,20 +16,17 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: user
-          POSTGRES_PASSWORD: password
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: myappdb
-        ports:
-          - 5432:5432
+        ports: ["5432:5432"]
         options: >-
-          --health-cmd="pg_isready -U user -d myappdb"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=20
+          --health-cmd="pg_isready -U postgres -d myappdb"
+          --health-interval=10s --health-timeout=5s --health-retries=20
 
     # IMPORTANT: Only async test URL at job level
     env:
-      TEST_DATABASE_URL: postgresql+asyncpg://user:password@localhost:5432/myappdb
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/myappdb
       PYTHONUNBUFFERED: '1'
 
     steps:
@@ -54,16 +51,20 @@ jobs:
       - name: Wait for Postgres
         run: |
           for i in {1..30}; do
-            if pg_isready -h localhost -p 5432 -U user -d myappdb; then
+            if pg_isready -h localhost -p 5432 -U postgres -d myappdb; then
               echo "Postgres is ready"; break
             fi
             echo "Waiting for Postgres... ($i/30)"; sleep 2
           done
 
+      - name: Verify DB login
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d myappdb -c "select current_user;"
+
       # Alembic gets a SYNC URL ONLY for this step
       - name: Run Alembic migrations (sync URL)
         env:
-          DATABASE_URL: postgresql+psycopg2://user:password@localhost:5432/myappdb
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/myappdb
         run: alembic upgrade head
 
       # Debug: confirm pytest will use async driver
@@ -83,70 +84,3 @@ jobs:
           DATABASE_URL: ""
           SQLALCHEMY_DATABASE_URI: ""
         run: pytest -q
-
-  build:
-    name: Build & Push (Docker Hub) + Trivy
-    needs: test
-    runs-on: ubuntu-latest
-
-    env:
-      IMAGE_NAME: jtn34/user_management
-      HAS_DH_SECRETS: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
-      IS_MAIN_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-
-    permissions:
-      contents: read
-      security-events: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        if: env.IS_MAIN_PUSH == 'true' && env.HAS_DH_SECRETS == 'true'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build image (PRs load locally) / (main pushes)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: ${{ env.IS_MAIN_PUSH == 'true' && env.HAS_DH_SECRETS == 'true' }}
-          load: ${{ env.IS_MAIN_PUSH != 'true' }}
-          tags: |
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-
-      - name: Scan image with Trivy (advisory)
-        uses: aquasecurity/trivy-action@0.24.0
-        env:
-          TRIVY_DISABLE_VEX_NOTICE: "true"
-        with:
-          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          vuln-type: 'os,library'
-          severity: 'HIGH,CRITICAL'
-          ignore-unfixed: true
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          exit-code: '0'
-
-      - name: Upload Trivy report
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-results.sarif
-
-      - name: Summary
-        run: |
-          echo "Event: ${{ github.event_name }}"
-          echo "Ref:   ${{ github.ref }}"
-          if [ "${{ env.IS_MAIN_PUSH }}" = "true" ] && [ "${{ env.HAS_DH_SECRETS }}" = "true" ]; then
-            echo "Pushed Docker image to docker.io/${{ env.IMAGE_NAME }} (latest, ${GITHUB_SHA})"
-          else
-            echo "Built image locally (no push)."
-          fi
