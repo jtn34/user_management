@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+from datetime import timedelta
 # tests/conftest.py
 import os, sys
 from sqlalchemy.engine.url import make_url
@@ -215,4 +217,4 @@ def manager_token(manager_user):
 @pytest.fixture(scope="function")
 def user_token(user):
     token_data = {"sub": str(user.id), "role": user.role.name}
-    return create_access_token(data=token_data, expires_delta=timelta(minutes=30))  # typo fixed below
+    return create_access_token(data=token_data, expires_delta=timedelta(minutes=30))  # typo fixed below
