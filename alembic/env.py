@@ -1,32 +1,37 @@
-# --- inside alembic/env.py ---
+# alembic/env.py
 import os
-url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
-config.set_main_option("sqlalchemy.url", url)
-
 from logging.config import fileConfig
+
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# ... your Base import(s) ...
+# Import your models' Base
 from app.models.user_model import Base
 
+# --- Alembic config & logging ---
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# Metadata for autogenerate
 target_metadata = Base.metadata
 
+
 def get_db_url() -> str:
-    # Force Alembic to use DATABASE_URL only (no fallbacks)
-    url = os.environ["DATABASE_URL"]  # <- will raise if missing, which is good
-    # If someone accidentally passed an async URL, convert to sync:
+    """
+    Prefer ALEMBIC_DATABASE_URL; fallback to DATABASE_URL.
+    If an async URL is provided, convert to psycopg2 for sync migrations.
+    """
+    url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
+    if not url:
+        raise RuntimeError("No ALEMBIC_DATABASE_URL or DATABASE_URL found for Alembic.")
     if "+asyncpg" in url:
         url = url.replace("+asyncpg", "+psycopg2")
     return url
 
+
 def run_migrations_offline() -> None:
     url = get_db_url()
-    print(f"\n[ALEMBIC OFFLINE] Using URL: {url}\n")
     config.set_main_option("sqlalchemy.url", url)
     context.configure(
         url=url,
@@ -39,15 +44,17 @@ def run_migrations_offline() -> None:
     with context.begin_transaction():
         context.run_migrations()
 
+
 def run_migrations_online() -> None:
     url = get_db_url()
-    print(f"\n[ALEMBIC ONLINE] Using URL: {url}\n")
     config.set_main_option("sqlalchemy.url", url)
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
@@ -57,6 +64,7 @@ def run_migrations_online() -> None:
         )
         with context.begin_transaction():
             context.run_migrations()
+
 
 if context.is_offline_mode():
     run_migrations_offline()
