@@ -58,4 +58,3 @@ uvicorn==0.29.0
 validators==0.24.0
 markdown2
 PyJWT==2.8.0
-asyncpg>=0.29
