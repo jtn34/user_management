@@ -38,15 +38,16 @@ services:
     volumes:
       - ./:/myapp/
     environment:
-      # Alembic (sync driver)
-      DATABASE_URL: postgresql+psycopg2://user:password@postgres:5432/myappdb
-      # App runtime/tests (async driver)
-      APP_DATABASE_URL: postgresql+asyncpg://user:password@postgres:5432/myappdb
+      DATABASE_URL: postgresql+asyncpg://user:password@postgres:5432/myappdb
+      TEST_DATABASE_URL: postgresql+asyncpg://user:password@postgres:5432/myappdb_test
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - app-network
+    # optional: expose directly so curl :8000 works
+    ports:
+      - "8000:8000"
 
   nginx:
     image: nginx:latest

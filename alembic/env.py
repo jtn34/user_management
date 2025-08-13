@@ -1,5 +1,8 @@
 # --- inside alembic/env.py ---
 import os
+url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
+config.set_main_option("sqlalchemy.url", url)
+
 from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
