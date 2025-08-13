@@ -1,22 +1,19 @@
 # app/models/user_model.py
-from builtins import bool, int, str
+from __future__ import annotations
+
+import uuid
 from datetime import datetime, timezone
 from enum import Enum
-import uuid
 
-from sqlalchemy import (
-    Column, String, Integer, DateTime, Boolean, func, Enum as SQLAlchemyEnum, ForeignKey  # NEW: ForeignKey
-)
-from sqlalchemy.dialects.postgresql import UUID, ENUM
-# NEW: JSONB import
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Enum as SQLEnum
 
 from app.database import Base
 
 
 class UserRole(Enum):
-    """Enumeration of user roles within the application, stored as ENUM in the database."""
     ANONYMOUS = "ANONYMOUS"
     AUTHENTICATED = "AUTHENTICATED"
     MANAGER = "MANAGER"
@@ -24,80 +21,88 @@ class UserRole(Enum):
 
 
 class User(Base):
-    """
-    Represents a user within the application, corresponding to the 'users' table in the database.
-    """
     __tablename__ = "users"
     __mapper_args__ = {"eager_defaults": True}
 
+    # Identity
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    nickname: Mapped[str] = Column(String(50), unique=True, nullable=False, index=True)
-    email: Mapped[str] = Column(String(255), unique=True, nullable=False, index=True)
-    first_name: Mapped[str] = Column(String(100), nullable=True)
-    last_name: Mapped[str] = Column(String(100), nullable=True)
+    nickname: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    first_name: Mapped[str | None] = mapped_column(String(100))
+    last_name: Mapped[str | None] = mapped_column(String(100))
 
-    # Profile fields
-    bio: Mapped[str] = Column(String(500), nullable=True)
-    profile_picture_url: Mapped[str] = Column(String(255), nullable=True)
-    linkedin_profile_url: Mapped[str] = Column(String(255), nullable=True)
-    github_profile_url: Mapped[str] = Column(String(255), nullable=True)
-    location: Mapped[str] = Column(String(120), nullable=True)  # NEW
+    # Profile
+    bio: Mapped[str | None] = mapped_column(String(500))
+    profile_picture_url: Mapped[str | None] = mapped_column(String(255))
+    linkedin_profile_url: Mapped[str | None] = mapped_column(String(255))
+    github_profile_url: Mapped[str | None] = mapped_column(String(255))
+    location: Mapped[str | None] = mapped_column(String(120))
+    extra_fields: Mapped[dict | None] = mapped_column(JSONB)
 
-    # Role & auth
-    role: Mapped[UserRole] = Column(SQLAlchemyEnum(UserRole, name='UserRole', create_constraint=True), nullable=False)
-    email_verified: Mapped[bool] = Column(Boolean, default=False, nullable=False)
-    hashed_password: Mapped[str] = Column(String(255), nullable=False)
-    verification_token = Column(String, nullable=True)
+    # Auth / role
+    role: Mapped[UserRole] = mapped_column(
+        SQLEnum(UserRole, name="UserRole", create_constraint=True),
+        nullable=False,
+        default=UserRole.AUTHENTICATED,
+    )
+    email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    verification_token: Mapped[str | None] = mapped_column(String(255))
 
     # Professional status
-    is_professional: Mapped[bool] = Column(Boolean, default=False, nullable=False)
-    professional_status_updated_at: Mapped[datetime] = Column(DateTime(timezone=True), nullable=True)
-    professional_upgraded_by_id: Mapped[uuid.UUID | None] = mapped_column(  # NEW
+    is_professional: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    professional_status_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        server_default=None,
+        onupdate=func.now(),
+        index=True,
+    )
+    professional_upgraded_by_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True
+        index=True,
     )
-    extra_fields: Mapped[dict | None] = Column(JSONB, nullable=True)  # NEW
+    professional_upgraded_by: Mapped["User"] = relationship(
+        "User", remote_side="User.id", lazy="joined"
+    )
 
     # Account / activity
-    last_login_at: Mapped[datetime] = Column(DateTime(timezone=True), nullable=True)
-    failed_login_attempts: Mapped[int] = Column(Integer, default=0)
-    is_locked: Mapped[bool] = Column(Boolean, default=False)
-    created_at: Mapped[datetime] = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     def __repr__(self) -> str:
         return f"<User {self.nickname}, Role: {self.role.name}>"
 
     # --- Account controls ---
-    def lock_account(self):
+    def lock_account(self) -> None:
         self.is_locked = True
 
-    def unlock_account(self):
+    def unlock_account(self) -> None:
         self.is_locked = False
 
-    def verify_email(self):
+    def verify_email(self) -> None:
         self.email_verified = True
 
     def has_role(self, role_name: UserRole) -> bool:
         return self.role == role_name
 
     # --- Professional status helpers ---
-    def mark_professional(self, by_user_id: uuid.UUID | None):
-        """Set professional true, stamp time/by."""
+    def mark_professional(self, by_user_id: uuid.UUID | None) -> None:
+        """Set professional True and stamp who/when (Python timestamp)."""
         self.is_professional = True
-        # Use server-side now() or Python-side; keeping your style consistent:
-        self.professional_status_updated_at = func.now()
+        self.professional_status_updated_at = datetime.now(timezone.utc)
         self.professional_upgraded_by_id = by_user_id
 
-    def clear_professional(self):
-        """Unset professional and clear metadata."""
+    def clear_professional(self) -> None:
+        """Unset professional and stamp when cleared."""
         self.is_professional = False
-        self.professional_status_updated_at = func.now()
+        self.professional_status_updated_at = datetime.now(timezone.utc)
         self.professional_upgraded_by_id = None
 
-    def update_professional_status(self, status: bool, by_user_id: uuid.UUID | None = None):
-        """Back-compat method that delegates to helpers."""
+    def update_professional_status(self, status: bool, by_user_id: uuid.UUID | None = None) -> None:
         if status:
             self.mark_professional(by_user_id)
         else:
